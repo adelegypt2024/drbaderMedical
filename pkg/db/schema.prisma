@@ -1,0 +1,245 @@
+generator client {
+  provider = "prisma-client-py"
+  interface = "asyncio"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  consultant
+  client
+}
+
+enum RequestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum FileCategory {
+  REQUEST
+  CONTRACT
+  MESSAGE
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  industry    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  requests    Request[]
+}
+
+model User {
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  password_hash         String
+  first_name            String
+  last_name             String
+  role                  UserRole
+  email_verified        Boolean              @default(false)
+  verification_token    String?              @unique
+  reset_token           String?              @unique
+  reset_token_expires   DateTime?
+  created_at            DateTime             @default(now())
+  updated_at            DateTime             @updatedAt
+  organization_id       String?
+  organization          Organization?        @relation(fields: [organization_id], references: [id])
+  consultant_profile    ConsultantProfile?
+  requests              Request[]            @relation("ClientRequests")
+  proposals             Proposal[]           @relation("ConsultantProposals")
+  messages              Message[]            @relation("AuthorMessages")
+  audits                Audit[]
+  files                 File[]
+  appointments          Appointment[]        @relation("UserAppointments")
+  sentPayments          Payment[]            @relation("PayerPayments")
+  receivedPayments      Payment[]            @relation("PayeePayments")
+}
+
+model ConsultantProfile {
+  id              String   @id @default(uuid())
+  user_id         String   @unique
+  specialties     String[]
+  hourly_rate     Float
+  years_experience Int
+  bio             String?
+  availability    String?
+  portfolio_url   String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  user            User     @relation(fields: [user_id], references: [id])
+  services        Service[]
+  proposals       Proposal[]
+  appointments    Appointment[] @relation("ConsultantAppointments")
+}
+
+model Service {
+  id           String    @id @default(uuid())
+  name         String
+  description  String?
+  category     String?
+  consultant   ConsultantProfile? @relation(fields: [consultant_id], references: [id])
+  consultant_id String?
+  requests     Request[]
+}
+
+model Request {
+  id             String         @id @default(uuid())
+  title          String
+  description    String
+  category       String
+  budget         String
+  target_date    DateTime
+  status         RequestStatus @default(OPEN)
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+  client_id      String
+  client         User          @relation("ClientRequests", fields: [client_id], references: [id])
+  organization_id String?
+  organization   Organization? @relation(fields: [organization_id], references: [id])
+  service_id     String?
+  service        Service?      @relation(fields: [service_id], references: [id])
+  proposals      Proposal[]
+  messages       Message[]
+  files          File[]
+  audits         Audit[]
+  appointments   Appointment[]
+  contract       Contract?
+}
+
+model Proposal {
+  id               String          @id @default(uuid())
+  request_id       String
+  consultant_id    String
+  scope            String
+  timeline         String
+  cost             Float
+  created_at       DateTime        @default(now())
+  status           ProposalStatus  @default(PENDING)
+  request          Request         @relation(fields: [request_id], references: [id])
+  consultant       User            @relation("ConsultantProposals", fields: [consultant_id], references: [id])
+  contract         Contract?
+}
+
+model Contract {
+  id             String         @id @default(uuid())
+  proposal_id    String         @unique
+  status         ContractStatus @default(DRAFT)
+  effective_date DateTime       @default(now())
+  terms          String
+  proposal       Proposal       @relation(fields: [proposal_id], references: [id])
+  invoices       Invoice[]
+  payments       Payment[]
+  audits         Audit[]
+}
+
+model Invoice {
+  id           String        @id @default(uuid())
+  contract_id  String
+  amount       Float
+  due_date     DateTime
+  status       InvoiceStatus @default(OPEN)
+  created_at   DateTime      @default(now())
+  contract     Contract      @relation(fields: [contract_id], references: [id])
+  payments     Payment[]
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  invoice_id     String
+  payer_id       String
+  payee_id       String
+  amount         Float
+  status         PaymentStatus @default(PENDING)
+  processed_at   DateTime?
+  provider_ref   String?
+  invoice        Invoice       @relation(fields: [invoice_id], references: [id])
+  payer          User          @relation("PayerPayments", fields: [payer_id], references: [id])
+  payee          User          @relation("PayeePayments", fields: [payee_id], references: [id])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  request_id  String
+  author_id   String
+  body        String
+  created_at  DateTime @default(now())
+  request     Request  @relation(fields: [request_id], references: [id])
+  author      User     @relation("AuthorMessages", fields: [author_id], references: [id])
+  files       File[]
+}
+
+model Appointment {
+  id               String   @id @default(uuid())
+  title            String
+  start_time       DateTime
+  end_time         DateTime
+  timezone         String
+  request_id       String?
+  consultant_id    String?
+  participant_id   String?
+  request          Request? @relation(fields: [request_id], references: [id])
+  consultant       ConsultantProfile? @relation("ConsultantAppointments", fields: [consultant_id], references: [id])
+  participant      User?    @relation("UserAppointments", fields: [participant_id], references: [id])
+}
+
+model File {
+  id           String      @id @default(uuid())
+  request_id   String?
+  message_id   String?
+  uploader_id  String
+  category     FileCategory
+  path         String
+  filename     String
+  mime_type    String
+  size_bytes   Int
+  created_at   DateTime    @default(now())
+  request      Request?    @relation(fields: [request_id], references: [id])
+  message      Message?    @relation(fields: [message_id], references: [id])
+  uploader     User        @relation(fields: [uploader_id], references: [id])
+}
+
+model Audit {
+  id          String   @id @default(uuid())
+  user_id     String?
+  request_id  String?
+  contract_id String?
+  action      String
+  metadata    Json?
+  created_at  DateTime @default(now())
+  user        User?    @relation(fields: [user_id], references: [id])
+  request     Request? @relation(fields: [request_id], references: [id])
+  contract    Contract? @relation(fields: [contract_id], references: [id])
+}

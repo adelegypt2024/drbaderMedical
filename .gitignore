@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+.env.*
+__pycache__/
+*.pyc
+.prisma/
+apps/web/.next/
+apps/web/out/
+storage/
+postgres_data/
